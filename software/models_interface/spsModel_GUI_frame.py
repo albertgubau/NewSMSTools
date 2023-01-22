@@ -7,6 +7,11 @@ from tkinter import filedialog, messagebox
 import spsModel_function
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), '../models/'))
 import utilFunctions as UF
+
+import matplotlib.pyplot as plt
+import playsound
+import essentia.standard as es
+import numpy as np
  
 class SpsModel_frame:
 
@@ -158,17 +163,136 @@ class SpsModel_frame:
 
         try:
             inputFile = self.filelocation.get()
+            fs = 44100
+
             window = self.w_type.get()
             M = int(self.M.get())
             N = int(self.N.get())
             t = int(self.t.get())
+
+            H = N//4
+
             minSineDur = float(self.minSineDur.get())
             maxnSines = int(self.maxnSines.get())
             freqDevOffset = int(self.freqDevOffset.get())
             freqDevSlope = float(self.freqDevSlope.get())
             stocf = float(self.stocf.get())
 
-            spsModel_function.main(inputFile, window, M, N, t, minSineDur, maxnSines, freqDevOffset, freqDevSlope, stocf)
+            #spsModel_function.main(inputFile, window, M, N, t, minSineDur, maxnSines, freqDevOffset, freqDevSlope, stocf)
+
+            ############################# ESSENTIA VERSION #########################################
+
+            # create an audio loader and import audio file
+            loader = es.MonoLoader(filename=inputFile, sampleRate=fs)
+            x = loader()
+
+            # ESSENTIA VERSION HAS A LOT MORE AVAILABLE PARAMETERS, SHOULD I USE THEM AND ADD THEM?
+            spsAnal = es.SpsModelAnal(fftSize=N,
+                                      freqDevOffset=freqDevOffset,
+                                      freqDevSlope=freqDevSlope,
+                                      hopSize=H,
+                                      magnitudeThreshold=t,
+                                      maxnSines=maxnSines,
+                                      sampleRate=fs)
+
+            spsSynth = es.SpsModelSynth(fftSize=N,
+                                        hopSize=H,
+                                        sampleRate=fs)
+
+            stochasticAnal = es.StochasticModelAnal(fftSize=N, hopSize=H, stocf=stocf)
+            stochasticSynth = es.StochasticModelSynth(sampleRate=fs, fftSize=N, hopSize=H, stocf=stocf)
+
+            # output sound file (monophonic with sampling rate of 44100)
+            outputFileSines = 'output_sounds/' + os.path.basename(inputFile)[:-4] + '_spsModel_sines.wav'
+            outputFileStochastic = 'output_sounds/' + os.path.basename(inputFile)[:-4] + '_spsModel_stochastic.wav'
+            outputFile = 'output_sounds/' + os.path.basename(inputFile)[:-4] + '_spsModel.wav'
+
+            # writers
+            awriter = es.MonoWriter(sampleRate=fs, filename=outputFileSines)
+            awriter2 = es.MonoWriter(sampleRate=fs, filename=outputFileStochastic)
+            awriter3 = es.MonoWriter(sampleRate=fs, filename=outputFile)
+
+            ys = []  # initialize output array
+            yst = []  # initialize output array
+
+            frames = 0
+
+            for frame in es.FrameGenerator(audio=x, frameSize=N, hopSize=H):
+
+                # Analysis
+                sps_anal = spsAnal(frame)
+
+                # Essentia already computes the stochastic in the SpsModelAnal function, but I get bad results with that
+                stocenv = stochasticAnal(frame)
+                synth_yst = stochasticSynth(stocenv)
+
+                # Save result
+                yst = np.append(yst, synth_yst)
+
+                #Synthesis
+                sps_synth = spsSynth(sps_anal[1], sps_anal[0], sps_anal[2], sps_anal[3])
+
+                # Save result
+                ys = np.append(ys, sps_synth[1])
+
+                frames += 1
+
+            ########################################################################################
+
+            #SMS-Tools Synthesis
+            y = ys[:min(ys.size, yst.size)] + yst[:min(ys.size, yst.size)]
+
+            awriter(ys)
+            awriter2(yst)
+            awriter3(y)
+
+            # create figure to plot
+            plt.figure(figsize=(9, 6))
+
+            # frequency range to plot
+            maxplotfreq = 10000.0
+
+            # plot the input sound
+            plt.subplot(3, 1, 1)
+            plt.plot(np.arange(x.size) / float(fs), x)
+            plt.axis([0, x.size / float(fs), min(x), max(x)])
+            plt.ylabel('amplitude')
+            plt.xlabel('time (sec)')
+            plt.title('input sound: x')
+
+            #plt.subplot(3, 1, 2)
+            #numFrames = int(stocEnv[:, 0].size)
+            #sizeEnv = int(stocEnv[0, :].size)
+            #frmTime = H * np.arange(numFrames) / float(fs)
+            #binFreq = (.5 * fs) * np.arange(sizeEnv * maxplotfreq / (.5 * fs)) / sizeEnv
+            #plt.pcolormesh(frmTime, binFreq, np.transpose(stocEnv[:, :int(sizeEnv * maxplotfreq / (.5 * fs) + 1)]),
+            #               shading='auto')
+            #plt.autoscale(tight=True)
+            #
+            ## plot sinusoidal frequencies on top of stochastic component
+            #if (tfreq.shape[1] > 0):
+            #    sines = tfreq * np.less(tfreq, maxplotfreq)
+            #    sines[sines == 0] = np.nan
+            #    numFrames = int(sines[:, 0].size)
+            #    frmTime = H * np.arange(numFrames) / float(fs)
+            #    plt.plot(frmTime, sines, color='k', ms=3, alpha=1)
+            #    plt.xlabel('time(s)')
+            #    plt.ylabel('Frequency(Hz)')
+            #    plt.autoscale(tight=True)
+            #    plt.title('sinusoidal + stochastic spectrogram')
+
+            # plot the output sound
+            plt.subplot(3, 1, 3)
+            plt.plot(np.arange(y.size) / float(fs), y)
+            plt.axis([0, y.size / float(fs), min(y), max(y)])
+            plt.ylabel('amplitude')
+            plt.xlabel('time (sec)')
+            plt.title('output sound: y')
+
+            plt.tight_layout()
+            plt.ion()
+            plt.show()
+
 
         except ValueError as errorMessage:
             messagebox.showerror("Input values error", str(errorMessage))

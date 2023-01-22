@@ -154,6 +154,9 @@ class StochasticModel_frame:
 
             awriter(yst)
 
+            # frequency range to plot
+            maxplotfreq = 15000.0
+
             # create figure to plot
             plt.figure(figsize=(9, 6))
 
@@ -165,12 +168,21 @@ class StochasticModel_frame:
             plt.xlabel('time (sec)')
             plt.title('input sound: x')
 
-            # plot stochastic representation
+            # plot stochastic representation   (Gave me problems)
+            #plt.subplot(3, 1, 2)
+            #numFrames = int(stocEnv[:, 0].size)
+            #frmTime = H * np.arange(numFrames) / float(fs)
+            #binFreq = np.arange(int(stocf * (N / 2 + 1))) * float(fs) / (stocf * N)
+            #plt.pcolormesh(frmTime, binFreq, np.transpose(stocEnv), shading='auto')
+            #plt.autoscale(tight=True)
+
+            # plot spectrogram stochastic component
             plt.subplot(3, 1, 2)
             numFrames = int(stocEnv[:, 0].size)
+            sizeEnv = int(stocEnv[0, :].size)
             frmTime = H * np.arange(numFrames) / float(fs)
-            binFreq = np.arange(int(stocf * (N / 2 + 1))) * float(fs) / (stocf * N)
-            plt.pcolormesh(frmTime, binFreq, np.transpose(stocEnv), shading='auto')
+            binFreq = (.5 * fs) * np.arange(sizeEnv * maxplotfreq / (.5 * fs)) / sizeEnv
+            plt.pcolormesh(frmTime, binFreq, np.transpose(stocEnv[:, :int(sizeEnv * maxplotfreq / (.5 * fs) + 1)]))
             plt.autoscale(tight=True)
             plt.xlabel('time (sec)')
             plt.ylabel('frequency (Hz)')

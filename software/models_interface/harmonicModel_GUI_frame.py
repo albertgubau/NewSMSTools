@@ -209,7 +209,7 @@ class HarmonicModel_frame:
 
 
             # output sound file (monophonic with sampling rate of 44100)
-            outputFile = 'output_sounds/' + os.path.basename(inputFile)[:-4] + '_stft.wav'
+            outputFile = 'output_sounds/' + os.path.basename(inputFile)[:-4] + '_harmonicModel.wav'
 
             awrite = es.MonoWriter(filename=outputFile, sampleRate=fs)
 
